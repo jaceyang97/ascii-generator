@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ASCII Art Generator</title>
+  <style>
+    body {
+      font-family: monospace;
+      margin: 20px;
+      background-color: #f4f4f4;
+    }
+    h1 {
+      text-align: center;
+    }
+    /* Flex container to house both configuration and ASCII art display */
+    .container {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 20px;
+      align-items: flex-start;
+      justify-content: center;
+    }
+    .config {
+      background: #fff;
+      padding: 15px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      min-width: 300px;
+    }
+    .config div {
+      margin-bottom: 10px;
+    }
+    label {
+      display: block;
+      margin-bottom: 2px;
+    }
+    input[type="number"],
+    input[type="range"] {
+      width: 100%;
+    }
+    /* Container to display generated ASCII art on the right of the config column */
+    #ascii-container {
+      flex: 1;
+      background: #000;
+      padding: 15px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      overflow: auto;
+      white-space: pre;
+      font-family: monospace;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+  <h1>ASCII Art Generator</h1>
+  <div class="container">
+    <!-- Configuration Panel -->
+    <div class="config">
+      <!-- Image file input -->
+      <div>
+        <label for="image-input">Select Image:</label>
+        <input type="file" id="image-input" accept="image/*">
+      </div>
+      <!-- ASCII density slider with 100 presets -->
+      <div>
+        <label for="ascii-density">ASCII Character Density:</label>
+        <input type="range" id="ascii-density" min="1" max="20" value="1">
+        <span id="density-value">Density 1</span>
+      </div>
+      <!-- Output width (in characters) -->
+      <div>
+        <label for="output-width">Output Width (in characters):</label>
+        <input type="number" id="output-width" value="100">
+      </div>
+      <!-- Font ratio (height/width) -->
+      <div>
+        <label for="font-ratio">Font Ratio (height/width):</label>
+        <input type="number" id="font-ratio" value="0.5" step="0.1">
+      </div>
+      <!-- Invert brightness -->
+      <div>
+        <label>
+          <input type="checkbox" id="invert"> Invert Brightness
+        </label>
+      </div>
+      <!-- Contrast adjustment -->
+      <div>
+        <label for="contrast">Contrast (1.0 is normal):</label>
+        <input type="range" id="contrast" min="0" max="3" step="0.1" value="1.0">
+        <span id="contrastValue">1.0</span>
+      </div>
+      <!-- Brightness adjustment -->
+      <div>
+        <label for="brightness">Brightness (0 is normal):</label>
+        <input type="range" id="brightness" min="-100" max="100" step="1" value="0">
+        <span id="brightnessValue">0</span>
+      </div>
+      <!-- Toggle for colored ASCII output -->
+      <div>
+        <label>
+          <input type="checkbox" id="color-output"> Colored ASCII (experimental)
+        </label>
+      </div>
+      <!-- Generate button -->
+      <div style="text-align:center;">
+        <button id="generate-btn">Generate ASCII Art</button>
+      </div>
+    </div>
+    <!-- Container to display the generated ASCII art -->
+    <div id="ascii-container">
+      <pre id="ascii-art"></pre>
+    </div>
+  </div>
+
+  <!-- Hidden canvas for image processing -->
+  <canvas id="canvas" style="display: none;"></canvas>
+
+  <script>
+    let lastImage = null;
+    let asciiDensities = [];
+
+    document.addEventListener('DOMContentLoaded', () => {
+      asciiDensities = createAsciiDensities();
+      document.getElementById('ascii-density').max = asciiDensities.length;
+      
+      document.getElementById('ascii-density').addEventListener('input', function() {
+        const densityIndex = this.value - 1;
+        document.getElementById('density-value').textContent = 
+          `Density ${this.value}: ${asciiDensities[densityIndex]}`;
+        lastImage && convertImageToAscii(lastImage);
+      });
+
+      ['brightness', 'contrast'].forEach(id => {
+        document.getElementById(id).addEventListener('input', function() {
+          document.getElementById(`${id}Value`).textContent = this.value;
+          lastImage && convertImageToAscii(lastImage);
+        });
+      });
+    });
+
+    document.getElementById('generate-btn').addEventListener('click', function() {
+      const file = document.getElementById('image-input').files[0];
+      if (!file) return alert('Please select an image file.');
+      
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = new Image();
+        img.onload = () => {
+          lastImage = img;
+          convertImageToAscii(img);
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    function convertImageToAscii(img) {
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      // Get configuration values
+      const outputWidth = parseInt(document.getElementById('output-width').value) || 100;
+      const fontRatio = parseFloat(document.getElementById('font-ratio').value) || 0.5;
+      const invert = document.getElementById('invert').checked;
+      const contrast = parseFloat(document.getElementById('contrast').value);
+      const brightness = parseFloat(document.getElementById('brightness').value);
+      const colorOutput = document.getElementById('color-output').checked;
+      
+      // Set canvas dimensions
+      canvas.width = outputWidth;
+      canvas.height = Math.round(outputWidth * img.height / img.width * fontRatio);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      // Process image data
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+      let asciiImage = "";
+
+      for (let y = 0; y < canvas.height; y++) {
+        for (let x = 0; x < canvas.width; x++) {
+          const offset = (y * canvas.width + x) * 4;
+          const [r, g, b, a] = data.slice(offset, offset + 4);
+
+          if (a === 0) {
+            asciiImage += " ";
+            continue;
+          }
+
+          // Calculate adjusted brightness
+          let brightnessValue = (0.2126 * r + 0.7152 * g + 0.0722 * b) * contrast + brightness;
+          brightnessValue = Math.max(0, Math.min(255, brightnessValue)) / 255;
+          let normalized = invert ? 1 - brightnessValue : brightnessValue;
+
+          // Map to ASCII character
+          const density = asciiDensities[document.getElementById('ascii-density').value - 1];
+          const char = density[Math.floor(normalized * (density.length - 1))];
+
+          asciiImage += colorOutput 
+            ? `<span style="color: rgb(${r},${g},${b})">${char}</span>` 
+            : char;
+        }
+        asciiImage += "\n";
+      }
+
+      // Update display
+      const asciiArtElem = document.getElementById('ascii-art');
+      colorOutput 
+        ? asciiArtElem.innerHTML = asciiImage 
+        : asciiArtElem.textContent = asciiImage;
+    }
+
+    function createAsciiDensities() {
+      const characters = "@&%QWNM0gB$#DR8mHXKAUbGOpV4d9h6PkqwSE2]ayjxY5Zoen[ult13If}C{iF|(7J)vTLs?z/*cr!+<>;=^,_:'-.";
+      return Array.from({length: 20}, (_, i) => {
+        const targetLength = Math.max(2, Math.floor((i + 1) * characters.length / 20));
+        return Array.from({length: targetLength}, (_, j) =>
+          characters[Math.round(j * (characters.length - 1) / (targetLength - 1))]
+        ).join('');
+      });
+    }
+  </script>
+</body>
+</html>
